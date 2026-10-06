@@ -1,8 +1,17 @@
+import uuid
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
 
 from app.models import Category, Status
 
@@ -67,3 +76,74 @@ class ReportStatusOut(BaseModel):
     submitted_on: date
     closed: bool
     updates: list[ReporterUpdateOut]
+
+
+class LoginIn(StrictModel):
+    username: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    password: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class ReportFilters(StrictModel):
+    status: StatusIn | None = None
+    category: CategoryIn | None = None
+    q: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = Field(
+        None, description="Case-insensitive text search in the description."
+    )
+    from_: date | None = Field(None, alias="from", description="Submitted on or after this date (YYYY-MM-DD).")
+    to: date | None = Field(None, description="Submitted on or before this date (YYYY-MM-DD).")
+    sort: Literal["newest", "oldest"] = "newest"
+    page: int = Field(1, ge=1)
+    page_size: int = Field(20, ge=1, le=100)
+
+    @field_validator("to")
+    @classmethod
+    def to_not_before_from(cls, value: date | None, info: ValidationInfo) -> date | None:
+        start = info.data.get("from_")
+        if value and start and start > value:
+            raise ValueError("'to' can't be earlier than 'from'.")
+        return value
+
+
+class ReportListItem(BaseModel):
+    id: uuid.UUID
+    category: Category
+    status: Status
+    submitted_on: date
+    closed: bool
+    description_preview: str
+    has_evidence_url: bool
+
+
+class ReportPage(BaseModel):
+    items: list[ReportListItem]
+    page: int
+    page_size: int
+    total: int
+
+
+class ModeratorUpdateOut(BaseModel):
+    message: str
+    from_status: Status | None
+    to_status: Status | None
+    visible_to_reporter: bool
+    moderator: str
+    created_at: datetime
+
+
+class ReportDetail(BaseModel):
+    id: uuid.UUID
+    category: Category
+    description: str
+    evidence_url: str | None
+    status: Status
+    submitted_on: date
+    closed: bool
+    closed_at: datetime | None
+    updated_at: datetime | None
+    updates: list[ModeratorUpdateOut]
