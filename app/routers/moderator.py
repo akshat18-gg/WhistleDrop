@@ -2,13 +2,21 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.errors import ApiError
-from app.models import Report
-from app.schemas import ModeratorUpdateOut, ReportDetail, ReportFilters, ReportListItem, ReportPage
+from app.models import ALLOWED_MOVES, FINAL_STATUSES, Moderator, Report, Status, StatusUpdate, utcnow
+from app.schemas import (
+    ModeratorUpdateOut,
+    NoteIn,
+    ReportDetail,
+    ReportFilters,
+    ReportListItem,
+    ReportPage,
+    StatusChangeIn,
+)
 from app.security import current_moderator
 
 router = APIRouter(
@@ -37,6 +45,84 @@ def get_report_or_404(db: Session, report_id: uuid.UUID) -> Report:
     return report
 
 
+def ensure_not_closed(report: Report) -> None:
+    if report.closed_at is not None:
+        raise ApiError(409, "CASE_CLOSED", "This case is closed. Nothing on it can be changed.")
+
+
+def transition_problem(current: Status, new: Status) -> str | None:
+    if new in ALLOWED_MOVES[current]:
+        return None
+    if new == current:
+        return f"This report is already {current}."
+    if current in FINAL_STATUSES:
+        return f"Can't move a report from {current} to {new}. {current} is a final status."
+    if current == Status.SUBMITTED and new in ALLOWED_MOVES[Status.UNDER_REVIEW]:
+        return f"Can't move a report from {current} to {new}. It has to be UNDER_REVIEW first."
+    return f"Can't move a report from {current} back to {new}."
+
+
+def update_if_unchanged(db: Session, report: Report, **values) -> None:
+    # Only touch the row if it still has the status we just checked and is still
+    # open. If another moderator got there first, no row matches and we return a
+    # conflict instead of quietly overwriting their change.
+    result = db.execute(
+        update(Report)
+        .where(Report.id == report.id, Report.status == report.status, Report.closed_at.is_(None))
+        .values(**values)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.rollback()
+        raise ApiError(
+            409,
+            "CHANGED_BY_SOMEONE_ELSE",
+            "Someone else changed this report while you were working on it. Load it again and retry.",
+        )
+
+
+def move_report(
+    db: Session,
+    report: Report,
+    new_status: Status,
+    moderator: Moderator,
+    note: str | None,
+    visible_to_reporter: bool,
+) -> None:
+    ensure_not_closed(report)
+    problem = transition_problem(report.status, new_status)
+    if problem:
+        raise ApiError(409, "INVALID_STATUS_TRANSITION", problem)
+
+    old_status = report.status
+    now = utcnow()
+    update_if_unchanged(db, report, status=new_status, updated_at=now)
+    db.add(
+        StatusUpdate(
+            report_id=report.id,
+            message=note or f"Status changed to {new_status.label}.",
+            from_status=old_status,
+            to_status=new_status,
+            visible_to_reporter=visible_to_reporter,
+            moderator_id=moderator.id,
+            created_at=now,
+        )
+    )
+    db.commit()
+    db.refresh(report)
+
+
+def update_out(update: StatusUpdate) -> ModeratorUpdateOut:
+    return ModeratorUpdateOut(
+        message=update.message,
+        from_status=update.from_status,
+        to_status=update.to_status,
+        visible_to_reporter=update.visible_to_reporter,
+        moderator=update.moderator.username,
+        created_at=update.created_at,
+    )
+
+
 def report_detail(report: Report) -> ReportDetail:
     return ReportDetail(
         id=report.id,
@@ -48,17 +134,7 @@ def report_detail(report: Report) -> ReportDetail:
         closed=report.closed_at is not None,
         closed_at=report.closed_at,
         updated_at=report.updated_at,
-        updates=[
-            ModeratorUpdateOut(
-                message=update.message,
-                from_status=update.from_status,
-                to_status=update.to_status,
-                visible_to_reporter=update.visible_to_reporter,
-                moderator=update.moderator.username,
-                created_at=update.created_at,
-            )
-            for update in report.updates
-        ],
+        updates=[update_out(update) for update in report.updates],
     )
 
 
@@ -110,3 +186,71 @@ def list_reports(filters: Annotated[ReportFilters, Query()], db: Session = Depen
 def get_report(report_id: uuid.UUID, db: Session = Depends(get_db)):
     """One report in full, with every update, including internal notes."""
     return report_detail(get_report_or_404(db, report_id))
+
+
+@router.patch("/reports/{report_id}", response_model=ReportDetail)
+def change_status(
+    report_id: uuid.UUID,
+    body: StatusChangeIn,
+    moderator: Moderator = Depends(current_moderator),
+    db: Session = Depends(get_db),
+):
+    """Move a report to its next status: SUBMITTED to UNDER_REVIEW, then UNDER_REVIEW to RESOLVED or DISMISSED."""
+    report = get_report_or_404(db, report_id)
+    move_report(db, report, body.status, moderator, body.note, body.visible_to_reporter)
+    return report_detail(report)
+
+
+@router.post("/reports/{report_id}/updates", status_code=201, response_model=ModeratorUpdateOut)
+def add_update(
+    report_id: uuid.UUID,
+    body: NoteIn,
+    moderator: Moderator = Depends(current_moderator),
+    db: Session = Depends(get_db),
+):
+    """Add a note without changing the status. Set visible_to_reporter to false for an internal note."""
+    report = get_report_or_404(db, report_id)
+    ensure_not_closed(report)
+    now = utcnow()
+    update_if_unchanged(db, report, updated_at=now)
+    note = StatusUpdate(
+        report_id=report.id,
+        message=body.message,
+        visible_to_reporter=body.visible_to_reporter,
+        moderator_id=moderator.id,
+        created_at=now,
+    )
+    db.add(note)
+    db.commit()
+    return update_out(note)
+
+
+@router.post("/reports/{report_id}/close", response_model=ReportDetail)
+def close_report(
+    report_id: uuid.UUID,
+    moderator: Moderator = Depends(current_moderator),
+    db: Session = Depends(get_db),
+):
+    """Permanently close a RESOLVED or DISMISSED report. After this, nothing on it can change."""
+    report = get_report_or_404(db, report_id)
+    ensure_not_closed(report)
+    if report.status not in FINAL_STATUSES:
+        raise ApiError(
+            409,
+            "NOT_READY_TO_CLOSE",
+            f"Only RESOLVED or DISMISSED reports can be closed. This one is {report.status}.",
+        )
+    now = utcnow()
+    update_if_unchanged(db, report, closed_at=now, updated_at=now)
+    db.add(
+        StatusUpdate(
+            report_id=report.id,
+            message="This case is now closed.",
+            visible_to_reporter=True,
+            moderator_id=moderator.id,
+            created_at=now,
+        )
+    )
+    db.commit()
+    db.refresh(report)
+    return report_detail(report)

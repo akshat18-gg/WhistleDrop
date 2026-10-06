@@ -22,6 +22,7 @@ def _uppercase(value):
 
 CategoryIn = Annotated[Category, BeforeValidator(_uppercase)]
 StatusIn = Annotated[Status, BeforeValidator(_uppercase)]
+Message = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 
 
 class StrictModel(BaseModel):
@@ -147,3 +148,14 @@ class ReportDetail(BaseModel):
     closed_at: datetime | None
     updated_at: datetime | None
     updates: list[ModeratorUpdateOut]
+
+
+class StatusChangeIn(StrictModel):
+    status: StatusIn
+    note: Message | None = Field(None, description="Leave out to use a default like 'Status changed to Under review.'")
+    visible_to_reporter: bool = True
+
+
+class NoteIn(StrictModel):
+    message: Message
+    visible_to_reporter: bool = Field(True, description="false makes it an internal note between moderators.")

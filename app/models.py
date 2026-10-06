@@ -31,6 +31,16 @@ class Status(enum.StrEnum):
         return self.value.replace("_", " ").capitalize()
 
 
+# Every status a report can move to from each status. Anything not listed here is refused.
+ALLOWED_MOVES: dict[Status, set[Status]] = {
+    Status.SUBMITTED: {Status.UNDER_REVIEW},
+    Status.UNDER_REVIEW: {Status.RESOLVED, Status.DISMISSED},
+    Status.RESOLVED: set(),
+    Status.DISMISSED: set(),
+}
+FINAL_STATUSES = {status for status, moves in ALLOWED_MOVES.items() if not moves}
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(microsecond=0)
 
