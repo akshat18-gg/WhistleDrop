@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     case_code_secret: str = Field(min_length=32)
     encryption_key: str
     database_url: str = "sqlite:///./whistledrop.db"
+    evidence_dir: str = "./evidence"
 
     @field_validator("encryption_key")
     @classmethod

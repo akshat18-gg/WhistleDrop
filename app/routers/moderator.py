@@ -1,16 +1,18 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app import evidence
 from app.db import get_db
 from app.errors import ApiError, documented
 from app.models import (
     ALLOWED_MOVES,
     FINAL_STATUSES,
     Category,
+    EvidenceFile,
     Moderator,
     Report,
     Status,
@@ -18,6 +20,7 @@ from app.models import (
     utcnow,
 )
 from app.schemas import (
+    EvidenceOut,
     ModeratorUpdateOut,
     NoteIn,
     ReportDetail,
@@ -145,6 +148,15 @@ def report_detail(report: Report) -> ReportDetail:
         closed_at=report.closed_at,
         updated_at=report.updated_at,
         updates=[update_out(update) for update in report.updates],
+        evidence_files=[
+            EvidenceOut(
+                id=item.id,
+                content_type=item.content_type,
+                size_bytes=item.size_bytes,
+                uploaded_on=item.uploaded_on,
+            )
+            for item in report.evidence
+        ],
     )
 
 
@@ -317,4 +329,29 @@ def stats(db: Session = Depends(get_db)):
         closed=db.scalar(select(func.count()).where(Report.closed_at.is_not(None))),
         by_status=by_status,
         by_category=by_category,
+    )
+
+
+@router.get(
+    "/reports/{report_id}/evidence/{evidence_id}",
+    response_class=Response,
+    summary="Download an evidence file",
+    responses={
+        200: {"content": {content_type: {} for content_type in evidence.EXTENSIONS}, "description": "The file"},
+        **documented(NOT_FOUND | BAD_ID),
+    },
+)
+def download_evidence(report_id: uuid.UUID, evidence_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Download a file the reporter attached. It's always sent as a download, never shown inline."""
+    item = db.get(EvidenceFile, evidence_id)
+    if item is None or item.report_id != report_id:
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "That report has no file with that id.")
+    data = evidence.load(item.id)
+    if data is None:
+        raise ApiError(404, "EVIDENCE_NOT_FOUND", "That file is no longer on the server.")
+    filename = f"evidence-{item.id}.{evidence.EXTENSIONS[item.content_type]}"
+    return Response(
+        content=data,
+        media_type=item.content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

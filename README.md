@@ -47,7 +47,7 @@ Keep both flags. Uvicorn's access log records every client's IP address, and the
 
 To lock a moderator out, run `python -m app.cli deactivate-moderator alice`. Any token they already have stops working too.
 
-To deploy your own copy, go to New > Blueprint in the Render dashboard and pick this repo. [`render.yaml`](render.yaml) generates both secrets, and Render asks you for `MODERATOR_PASSWORD`. The free plan has no shell, so the start command creates the `demo` moderator from that password every time the service boots.
+To deploy your own copy, go to New > Blueprint in the Render dashboard and pick this repo. [`render.yaml`](render.yaml) generates the secrets and the encryption key, and Render asks you for `MODERATOR_PASSWORD`. The free plan has no shell, so the start command creates the `demo` moderator from that password every time the service boots.
 
 ## Tests and the demo script
 
@@ -79,12 +79,14 @@ python -c "import json; from app.main import app; print(json.dumps(app.openapi()
 | GET | `/api/categories` | anyone | Lists the five categories |
 | POST | `/api/reports` | anyone | Submits a report and returns the case code, once |
 | GET | `/api/reports/status` | anyone with a code | Status and the updates meant for the reporter. The code goes in the `X-Case-Code` header |
+| POST | `/api/reports/evidence` | anyone with a code | Attaches a JPEG, PNG or PDF of up to 5 MB, sent as the raw body. Up to 5 per report |
 | POST | `/api/auth/login` | moderators | Returns a bearer token that lasts 60 minutes |
 | GET | `/api/moderator/reports` | moderators | Lists reports. Filters: `status`, `category`, `q`, `from`, `to`, `sort`, `page`, `page_size` |
 | GET | `/api/moderator/reports/{id}` | moderators | The full report and every update, internal notes included |
 | PATCH | `/api/moderator/reports/{id}` | moderators | Changes the status, with an optional note |
 | POST | `/api/moderator/reports/{id}/updates` | moderators | Adds a note, either for the reporter or internal |
 | POST | `/api/moderator/reports/{id}/close` | moderators | Closes a RESOLVED or DISMISSED case for good |
+| GET | `/api/moderator/reports/{id}/evidence/{file_id}` | moderators | Downloads an attached file |
 | GET | `/api/moderator/stats` | moderators | Counts by status and category, how many are open and how many are closed |
 
 ## How anonymity is kept
@@ -102,12 +104,14 @@ The main idea is that the database never holds anything that points to a person.
 - **The reporter view is small.** It doesn't include the description, so someone who finds a code sees a status, not the report. Updates don't say which moderator wrote them, and internal notes don't show at all.
 - **Headers.** API responses send `Cache-Control: no-store`. Every response sends `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`.
 - **Encrypted at rest.** The description and evidence link are encrypted with Fernet before they reach the database, so a copied database file is useless without `ENCRYPTION_KEY`. Fernet normally stamps every token with the time it was made, in plain text. That would put the exact submission time back into the database, so I stamp every token with 0 instead.
+- **Evidence files lose their metadata.** Photos can carry the GPS location, the phone model and the time they were taken. Instead of deleting those tags one by one, I rebuild each image from its pixels alone, so nothing else comes along. The file type is decided by its first bytes, not its name. Files are stored encrypted, under random names, outside any public folder, with the modified time set to 1970, and only moderators can download them.
 - **Rate limits without keeping IPs.** A client can submit 10 reports an hour, check status 30 times a minute and try logging in 10 times a minute. The limiter is the one place that reads the client's IP. It hashes the IP with a random key that exists only in memory and changes on every restart, and the counters live in memory too. Nothing about the client is logged or stored. Guessing an 80-bit code is already hopeless, so the limits are mostly about spam. They also count failed status lookups, so nobody can make unlimited guesses. On Render the app sits behind a proxy, so uvicorn takes the client address from `X-Forwarded-For`. A determined spammer could fake that header, so the limits only stop casual spam.
 
 Some things the backend can't protect:
 
 - **What the reporter writes.** If the description says "I'm the only TA in the lab on Tuesday nights", hashing doesn't help. The submit response reminds them of this.
 - **Where the evidence link points.** A Google Drive or OneDrive link can show the owner's name and email to anyone who opens it. Reporters should use a link that isn't tied to their account.
+- **PDF metadata, and what's in the picture.** Pillow can't clean PDFs, and a PDF can carry the author's name. The upload response warns about this and suggests screenshots instead. No cleaning helps if the photo itself shows your desk or your reflection.
 - **Logs kept by the host or the network.** Apart from the rate limiter, my code never reads `request.client` or `X-Forwarded-For`. But a hosting provider, reverse proxy or college network in front of it can keep its own logs with IP addresses and exact times. Most hosts also timestamp everything an app prints. Someone who needs strong anonymity should report from a network that isn't theirs, or through Tor.
 
 ## Example requests and responses
@@ -174,9 +178,7 @@ curl "localhost:8000/api/moderator/reports?category=SECURITY&status=SUBMITTED&q=
       "has_evidence_url": false
     }
   ],
-  "page": 1,
-  "page_size": 20,
-  "total": 1
+  "page": 1, "page_size": 20, "total": 1
 }
 ```
 
@@ -186,6 +188,13 @@ Move it to UNDER_REVIEW with a note the reporter will see. Add `"visible_to_repo
 curl -X PATCH localhost:8000/api/moderator/reports/2770cbd8-e85c-471f-b01d-b1206ae7cac1 \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"status": "UNDER_REVIEW", "note": "Thanks for reporting this. We have started looking into it."}'
+```
+
+The reporter can attach a photo or PDF with their code. Images come back from the server without their metadata:
+
+```bash
+curl -X POST localhost:8000/api/reports/evidence -H "X-Case-Code: WD-EDAF-FPA0-SQKR-XJB5" \
+  -H "Content-Type: application/octet-stream" --data-binary @photo.jpg
 ```
 
 Every error has the same shape. Here's a report trying to skip review:
@@ -246,5 +255,5 @@ Closing is a separate step. Once a report is RESOLVED or DISMISSED, a moderator 
 ## Not done yet
 
 - Key rotation. If `ENCRYPTION_KEY` leaked, I'd want to re-encrypt everything with a new key, using Fernet's `MultiFernet`.
-- Evidence file uploads with metadata stripped from images.
+- Cleaning PDF metadata too, which needs a PDF library. Also HEIC photos from iPhones, which Pillow can't open on its own.
 - Postgres instead of SQLite if this ever had real traffic, with Alembic migrations instead of `create_all`.

@@ -176,6 +176,129 @@
         }
       }
     },
+    "/api/reports/evidence": {
+      "post": {
+        "tags": [
+          "Reporters"
+        ],
+        "summary": "Attach a file to your report",
+        "description": "Send a JPEG, PNG or PDF (up to 5 MB) as the raw request body. Images have their metadata removed.\nOnly moderators can download it.",
+        "operationId": "upload_evidence_api_reports_evidence_post",
+        "parameters": [
+          {
+            "name": "X-Case-Code",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN.",
+              "title": "X-Case-Code"
+            },
+            "description": "Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceUploadOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No file sent, or the X-Case-Code header is missing or badly formatted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report matches that case code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The case is closed, or it already has 5 files",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The file is over 5 MB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The file isn't a JPEG, PNG or PDF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The image is damaged or has too many pixels",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 10 uploads in an hour from the same client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": [
@@ -774,6 +897,83 @@
         ]
       }
     },
+    "/api/moderator/reports/{report_id}/evidence/{evidence_id}": {
+      "get": {
+        "tags": [
+          "Moderators"
+        ],
+        "summary": "Download an evidence file",
+        "description": "Download a file the reporter attached. It's always sent as a download, never shown inline.",
+        "operationId": "download_evidence_api_moderator_reports__report_id__evidence__evidence_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Evidence Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "application/pdf": {}
+            }
+          },
+          "401": {
+            "description": "No token, or the token is invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The id isn't a UUID, or a field failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -870,6 +1070,64 @@
           "error"
         ],
         "title": "ErrorOut"
+      },
+      "EvidenceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "uploaded_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Uploaded On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "content_type",
+          "size_bytes",
+          "uploaded_on"
+        ],
+        "title": "EvidenceOut"
+      },
+      "EvidenceUploadOut": {
+        "properties": {
+          "content_type": {
+            "type": "string",
+            "title": "Content Type"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "files_attached": {
+            "type": "integer",
+            "title": "Files Attached"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content_type",
+          "size_bytes",
+          "files_attached",
+          "note"
+        ],
+        "title": "EvidenceUploadOut"
       },
       "LoginIn": {
         "properties": {
@@ -1046,6 +1304,13 @@
             },
             "type": "array",
             "title": "Updates"
+          },
+          "evidence_files": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceOut"
+            },
+            "type": "array",
+            "title": "Evidence Files"
           }
         },
         "type": "object",
@@ -1059,7 +1324,8 @@
           "closed",
           "closed_at",
           "updated_at",
-          "updates"
+          "updates",
+          "evidence_files"
         ],
         "title": "ReportDetail"
       },

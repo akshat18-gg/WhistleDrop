@@ -185,6 +185,20 @@ class ModeratorUpdateOut(BaseModel):
     created_at: datetime
 
 
+class EvidenceUploadOut(BaseModel):
+    content_type: str
+    size_bytes: int
+    files_attached: int
+    note: str
+
+
+class EvidenceOut(BaseModel):
+    id: uuid.UUID
+    content_type: str
+    size_bytes: int
+    uploaded_on: date
+
+
 class ReportDetail(BaseModel):
     id: uuid.UUID
     category: Category
@@ -196,6 +210,7 @@ class ReportDetail(BaseModel):
     closed_at: datetime | None
     updated_at: datetime | None
     updates: list[ModeratorUpdateOut]
+    evidence_files: list[EvidenceOut]
 
 
 class StatusChangeIn(StrictModel):

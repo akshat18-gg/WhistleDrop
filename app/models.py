@@ -74,6 +74,17 @@ def _fernet() -> Fernet:
     return Fernet(get_settings().encryption_key)
 
 
+def encrypt(data: bytes) -> bytes:
+    # A Fernet token normally carries the time it was made, unencrypted. That
+    # would be the exact submission time, so every token gets 0 instead. We
+    # never use Fernet's expiry check, so nothing depends on the real time.
+    return _fernet().encrypt_at_time(data, 0)
+
+
+def decrypt(token: bytes) -> bytes:
+    return _fernet().decrypt(token)
+
+
 class EncryptedText(TypeDecorator):
     """Encrypted with Fernet before it's written, decrypted when it's read.
     A copy of the database file is useless without ENCRYPTION_KEY."""
@@ -84,15 +95,12 @@ class EncryptedText(TypeDecorator):
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
-        # A Fernet token normally carries the time it was made, unencrypted. That
-        # would be the exact submission time, so every token gets 0 instead. We
-        # never use Fernet's expiry check, so nothing depends on the real time.
-        return _fernet().encrypt_at_time(value.encode(), 0).decode()
+        return encrypt(value.encode()).decode()
 
     def process_result_value(self, value, dialect):
         if value is None:
             return None
-        return _fernet().decrypt(value).decode()
+        return decrypt(value.encode()).decode()
 
 
 class Report(Base):
@@ -116,6 +124,9 @@ class Report(Base):
 
     updates: Mapped[list["StatusUpdate"]] = relationship(
         back_populates="report", order_by="StatusUpdate.id"
+    )
+    evidence: Mapped[list["EvidenceFile"]] = relationship(
+        order_by=lambda: [EvidenceFile.uploaded_on, EvidenceFile.id]
     )
 
 
@@ -143,3 +154,15 @@ class Moderator(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class EvidenceFile(Base):
+    __tablename__ = "evidence_files"
+    __table_args__ = {"sqlite_with_rowid": False}
+
+    # Also the file's name on disk, so it gives nothing away either.
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    report_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("reports.id"), index=True)
+    content_type: Mapped[str] = mapped_column(String(32))
+    size_bytes: Mapped[int]
+    uploaded_on: Mapped[date] = mapped_column(Date)

@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from app import case_codes, db  # noqa: E402
+from app.config import get_settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Moderator, Report  # noqa: E402
 from app.security import hash_password, limiter  # noqa: E402
@@ -27,6 +28,7 @@ def engine(tmp_path, monkeypatch):
     """Every test gets its own empty SQLite file."""
     test_engine = db.make_engine(f"sqlite:///{tmp_path / 'test.db'}")
     monkeypatch.setattr(db, "engine", test_engine)
+    monkeypatch.setattr(get_settings(), "evidence_dir", str(tmp_path / "evidence"))
     db.SessionLocal.configure(bind=test_engine)
     db.create_tables()
     yield test_engine

@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import timedelta
 
@@ -15,7 +16,7 @@ def moderator_routes():
     for path, operations in app.openapi()["paths"].items():
         if path.startswith("/api/moderator"):
             for method in operations:
-                yield method.upper(), path.replace("{report_id}", str(uuid.uuid4()))
+                yield method.upper(), re.sub(r"\{\w+\}", lambda _: str(uuid.uuid4()), path)
 
 
 def make_token(secret=None, **claims):

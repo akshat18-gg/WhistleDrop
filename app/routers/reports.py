@@ -5,11 +5,18 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import case_codes
+from app import case_codes, evidence
 from app.db import get_db
 from app.errors import ApiError, documented
-from app.models import Category, Report, utcnow
-from app.schemas import CategoryOut, ReportIn, ReporterUpdateOut, ReportStatusOut, SubmitOut
+from app.models import Category, EvidenceFile, Report, utcnow
+from app.schemas import (
+    CategoryOut,
+    EvidenceUploadOut,
+    ReportIn,
+    ReporterUpdateOut,
+    ReportStatusOut,
+    SubmitOut,
+)
 from app.security import limiter
 
 router = APIRouter(prefix="/api", tags=["Reporters"])
@@ -18,6 +25,23 @@ SAVE_CODE_NOTE = "Save this code now. It's the only way to check on your report 
 PRIVACY_TIP = (
     "We don't know who you are, but details in your description that only you would know "
     "can still point back to you."
+)
+
+
+# The code travels in a header, not the URL, because URLs end up in
+# server logs, proxy logs and browser history.
+CaseCodeHeader = Annotated[
+    str | None,
+    Header(
+        alias="X-Case-Code",
+        description="Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN.",
+    ),
+]
+
+IMAGE_NOTE = "Hidden details like GPS location, camera model and the time the photo was taken were removed before saving."
+PDF_NOTE = (
+    "Careful: PDFs can hold hidden details like the author's name and the program that made them, "
+    "and those were not removed. If that could identify you, upload screenshots instead."
 )
 
 
@@ -101,15 +125,7 @@ def submit_report(request: Request, body: ReportIn, db: Session = Depends(get_db
 @limiter.limit("30/minute")
 def check_status(
     request: Request,
-    # The code travels in a header, not the URL, because URLs end up in
-    # server logs, proxy logs and browser history.
-    x_case_code: Annotated[
-        str | None,
-        Header(
-            alias="X-Case-Code",
-            description="Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN.",
-        ),
-    ] = None,
+    x_case_code: CaseCodeHeader = None,
     db: Session = Depends(get_db),
 ):
     """Check on your report with your case code. Shows the status and the updates moderators chose to share."""
@@ -126,4 +142,67 @@ def check_status(
             for update in report.updates
             if update.visible_to_reporter
         ],
+    )
+
+
+async def raw_body(request: Request) -> bytes:
+    return await request.body()
+
+
+@router.post(
+    "/reports/evidence",
+    status_code=201,
+    response_model=EvidenceUploadOut,
+    summary="Attach a file to your report",
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
+        }
+    },
+    responses=documented(
+        {
+            400: "No file sent, or the X-Case-Code header is missing or badly formatted",
+            404: "No report matches that case code",
+            409: "The case is closed, or it already has 5 files",
+            413: "The file is over 5 MB",
+            415: "The file isn't a JPEG, PNG or PDF",
+            422: "The image is damaged or has too many pixels",
+            429: "More than 10 uploads in an hour from the same client",
+        }
+    ),
+)
+@limiter.limit("10/hour")
+def upload_evidence(
+    request: Request,
+    data: bytes = Depends(raw_body),
+    x_case_code: CaseCodeHeader = None,
+    db: Session = Depends(get_db),
+):
+    """Send a JPEG, PNG or PDF (up to 5 MB) as the raw request body. Images have their metadata removed.
+    Only moderators can download it."""
+    report = find_report_by_case_code(db, x_case_code)
+    if report.closed_at is not None:
+        raise ApiError(409, "CASE_CLOSED", "This case is closed. Nothing on it can be changed.")
+    if len(report.evidence) >= evidence.MAX_FILES_PER_REPORT:
+        raise ApiError(
+            409, "TOO_MANY_FILES", f"A report can have at most {evidence.MAX_FILES_PER_REPORT} files."
+        )
+
+    content_type, cleaned = evidence.clean_upload(data)
+    item = EvidenceFile(report_id=report.id, content_type=content_type, size_bytes=len(cleaned), uploaded_on=utcnow().date())
+    db.add(item)
+    db.flush()
+    evidence.save(item.id, cleaned)
+    try:
+        db.commit()
+    except Exception:
+        evidence.delete(item.id)
+        raise
+
+    return EvidenceUploadOut(
+        content_type=content_type,
+        size_bytes=len(cleaned),
+        files_attached=len(report.evidence) + 1,
+        note=PDF_NOTE if content_type == "application/pdf" else IMAGE_NOTE,
     )

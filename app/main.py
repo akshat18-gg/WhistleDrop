@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from starlette.datastructures import Headers
 
-from app import errors
+from app import errors, evidence
 from app.db import create_tables
 from app.errors import ApiError, error_response
 from app.routers import auth, moderator, reports
@@ -17,6 +17,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 logger = logging.getLogger("whistledrop")
 
 MAX_BODY_BYTES = 32 * 1024
+BODY_LIMITS = {"/api/reports/evidence": evidence.MAX_BYTES}
 
 
 @asynccontextmanager
@@ -77,7 +78,7 @@ app.include_router(moderator.router)
 
 
 class LimitBodySize:
-    """Refuses bodies over 32 KB, whether or not the client says the size up front."""
+    """Refuses bodies over 32 KB (5 MB for evidence files), whether or not the client says the size up front."""
 
     def __init__(self, app):
         self.app = app
@@ -86,9 +87,10 @@ class LimitBodySize:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
 
-        too_large = ApiError(413, "BODY_TOO_LARGE", f"The request body can't be bigger than {MAX_BODY_BYTES // 1024} KB.")
+        limit = BODY_LIMITS.get(scope["path"], MAX_BODY_BYTES)
+        too_large = ApiError(413, "BODY_TOO_LARGE", f"The request body can't be bigger than {limit // 1024} KB.")
         declared = Headers(scope=scope).get("content-length", "")
-        if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+        if declared.isdigit() and int(declared) > limit:
             response = error_response(too_large.status_code, too_large.code, too_large.detail)
             return await response(scope, receive, send)
 
@@ -99,7 +101,7 @@ class LimitBodySize:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > MAX_BODY_BYTES:
+                if received > limit:
                     raise too_large
             return message
 

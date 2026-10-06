@@ -5,6 +5,7 @@ __pycache__/
 .env
 *.db
 *.db-journal
+evidence/
 
 # local assistant files, not part of the project
 CLAUDE.md
