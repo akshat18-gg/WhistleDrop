@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -26,7 +27,11 @@ PRIVACY_TIP = (
     "We don't know who you are, but details in your description that only you would know "
     "can still point back to you."
 )
-
+IMAGE_NOTE = "Hidden details like GPS location, camera model and the time the photo was taken were removed before saving."
+PDF_NOTE = (
+    "Careful: PDFs can hold hidden details like the author's name and the program that made them, "
+    "and those were not removed. If that could identify you, upload screenshots instead."
+)
 
 # The code travels in a header, not the URL, because URLs end up in
 # server logs, proxy logs and browser history.
@@ -37,12 +42,6 @@ CaseCodeHeader = Annotated[
         description="Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN.",
     ),
 ]
-
-IMAGE_NOTE = "Hidden details like GPS location, camera model and the time the photo was taken were removed before saving."
-PDF_NOTE = (
-    "Careful: PDFs can hold hidden details like the author's name and the program that made them, "
-    "and those were not removed. If that could identify you, upload screenshots instead."
-)
 
 
 def find_report_by_case_code(db: Session, raw_code: str | None) -> Report:
@@ -190,10 +189,14 @@ def upload_evidence(
         )
 
     content_type, cleaned = evidence.clean_upload(data)
-    item = EvidenceFile(report_id=report.id, content_type=content_type, size_bytes=len(cleaned), uploaded_on=utcnow().date())
-    db.add(item)
-    db.flush()
+    item = EvidenceFile(
+        id=uuid.uuid4(),
+        content_type=content_type,
+        size_bytes=len(cleaned),
+        uploaded_on=utcnow().date(),
+    )
     evidence.save(item.id, cleaned)
+    report.evidence.append(item)
     try:
         db.commit()
     except Exception:
@@ -203,6 +206,6 @@ def upload_evidence(
     return EvidenceUploadOut(
         content_type=content_type,
         size_bytes=len(cleaned),
-        files_attached=len(report.evidence) + 1,
+        files_attached=len(report.evidence),
         note=PDF_NOTE if content_type == "application/pdf" else IMAGE_NOTE,
     )

@@ -19,13 +19,6 @@ logger = logging.getLogger("whistledrop")
 MAX_BODY_BYTES = 32 * 1024
 BODY_LIMITS = {"/api/reports/evidence": evidence.MAX_BYTES}
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    create_tables()
-    yield
-
-
 DESCRIPTION = """
 A confidential reporting API. Anyone can submit a report without an account or a name,
 and track it later with the case code they get back.
@@ -45,6 +38,13 @@ TAGS = [
     {"name": "Health"},
 ]
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_tables()
+    yield
+
+
 app = FastAPI(
     title="WhistleDrop",
     version="1.0.0",
@@ -54,6 +54,14 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 errors.register(app)
+app.include_router(reports.router)
+app.include_router(auth.router)
+app.include_router(moderator.router)
+
+
+@app.get("/health", tags=["Health"], summary="Health check")
+def health():
+    return {"status": "ok"}
 
 
 def openapi_schema():
@@ -72,9 +80,10 @@ def openapi_schema():
 
 
 app.openapi = openapi_schema
-app.include_router(reports.router)
-app.include_router(auth.router)
-app.include_router(moderator.router)
+
+
+def readable_size(size: int) -> str:
+    return f"{size // (1024 * 1024)} MB" if size >= 1024 * 1024 else f"{size // 1024} KB"
 
 
 class LimitBodySize:
@@ -88,7 +97,7 @@ class LimitBodySize:
             return await self.app(scope, receive, send)
 
         limit = BODY_LIMITS.get(scope["path"], MAX_BODY_BYTES)
-        too_large = ApiError(413, "BODY_TOO_LARGE", f"The request body can't be bigger than {limit // 1024} KB.")
+        too_large = ApiError(413, "BODY_TOO_LARGE", f"The request body can't be bigger than {readable_size(limit)}.")
         declared = Headers(scope=scope).get("content-length", "")
         if declared.isdigit() and int(declared) > limit:
             response = error_response(too_large.status_code, too_large.code, too_large.detail)
@@ -136,8 +145,3 @@ async def headers_and_logging(request: Request, call_next):
     elapsed_ms = (time.perf_counter() - started) * 1000
     logger.info("%s %s %s %.0fms", request.method, route_template(request), response.status_code, elapsed_ms)
     return response
-
-
-@app.get("/health", tags=["Health"], summary="Health check")
-def health():
-    return {"status": "ok"}

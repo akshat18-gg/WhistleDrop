@@ -144,6 +144,7 @@ def test_upload_limit_is_5_mb_not_32_kb(client, case):
     response = upload(client, headers, PDF + b"%" * evidence.MAX_BYTES)
     assert response.status_code == 413
     assert response.json()["error"]["code"] == "BODY_TOO_LARGE"
+    assert response.json()["error"]["message"] == "The request body can't be bigger than 5 MB."
 
 
 def test_upload_needs_a_valid_case_code(client, submit):
