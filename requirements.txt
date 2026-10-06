@@ -1,0 +1,9 @@
+fastapi==0.142.2
+uvicorn==0.54.0
+sqlalchemy==2.0.54
+pydantic==2.13.5
+pydantic-settings==2.15.0
+argon2-cffi==25.1.0
+pyjwt==2.15.1
+pytest==9.1.1
+httpx2==2.13.1
