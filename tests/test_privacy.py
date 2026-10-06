@@ -1,6 +1,8 @@
 import re
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, select
+
+from app.models import Report
 
 
 def test_reports_table_has_no_identity_columns(engine):
@@ -46,3 +48,32 @@ def test_status_response_does_not_include_description(submit, client):
     body = client.get("/api/reports/status", headers={"X-Case-Code": code}).json()
     assert "description" not in body
     assert "propped open" not in str(body)
+
+
+def test_no_response_ever_contains_the_case_code_hash(client, auth, submit, session):
+    code = submit(evidence_url="https://example.com/photo.jpg").json()["case_code"]
+    report = session.scalar(select(Report))
+    report_id = report.id
+    stored_hash = report.case_code_hash
+    reporter = {"X-Case-Code": code}
+    base = f"/api/moderator/reports/{report_id}"
+
+    responses = [
+        client.get("/health"),
+        client.get("/api/categories"),
+        client.get("/api/reports/status", headers=reporter),
+        client.get("/api/moderator/reports", headers=auth),
+        client.get("/api/moderator/reports", headers=auth, params={"q": "propped"}),
+        client.get(base, headers=auth),
+        client.patch(base, headers=auth, json={"status": "UNDER_REVIEW"}),
+        client.post(f"{base}/updates", headers=auth, json={"message": "Looking into it."}),
+        client.patch(base, headers=auth, json={"status": "RESOLVED"}),
+        client.post(f"{base}/close", headers=auth),
+        client.patch(base, headers=auth, json={"status": "DISMISSED"}),
+        client.get("/api/reports/status", headers=reporter),
+        client.get(base, headers=auth),
+        client.get("/openapi.json"),
+    ]
+    for response in responses:
+        assert "case_code_hash" not in response.text
+        assert stored_hash not in response.text
