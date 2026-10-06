@@ -1,0 +1,1332 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "WhistleDrop",
+    "description": "\nA confidential reporting API. Anyone can submit a report without an account or a name,\nand track it later with the case code they get back.\n\n**Reporters:** submit with `POST /api/reports` and save the `case_code` from the response.\nTo check on it, call `GET /api/reports/status` with the code in the `X-Case-Code` header.\n\n**Moderators:** log in with `POST /api/auth/login`, click **Authorize** and paste the `access_token`.\n\nEvery error looks like `{\"error\": {\"code\", \"message\", \"details\"}}`.\n",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/categories": {
+      "get": {
+        "tags": [
+          "Reporters"
+        ],
+        "summary": "List categories",
+        "description": "The categories a report can be filed under.",
+        "operationId": "list_categories_api_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CategoryOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Categories Api Categories Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports": {
+      "post": {
+        "tags": [
+          "Reporters"
+        ],
+        "summary": "Submit a report",
+        "description": "Submit a report. No account and no name needed. The response holds your case code, shown only once.",
+        "operationId": "submit_report_api_reports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The body isn't valid JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is over 32 KB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field failed validation, or an unknown field was sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reports/status": {
+      "get": {
+        "tags": [
+          "Reporters"
+        ],
+        "summary": "Check on your report",
+        "description": "Check on your report with your case code. Shows the status and the updates moderators chose to share.",
+        "operationId": "check_status_api_reports_status_get",
+        "parameters": [
+          {
+            "name": "X-Case-Code",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN.",
+              "title": "X-Case-Code"
+            },
+            "description": "Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportStatusOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The X-Case-Code header is missing or isn't shaped like a case code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report matches that case code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Moderator login"
+        ],
+        "summary": "Log in",
+        "description": "Log in as a moderator. The token lasts 60 minutes.",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong username or password",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Username or password missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderator/reports": {
+      "get": {
+        "tags": [
+          "Moderators"
+        ],
+        "summary": "List and filter reports",
+        "description": "List reports, newest first by default. All filters are optional and can be combined.",
+        "operationId": "list_reports_api_moderator_reports_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Status"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Category"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive text search in the description.",
+              "title": "Q"
+            },
+            "description": "Case-insensitive text search in the description."
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Submitted on or after this date (YYYY-MM-DD).",
+              "title": "From"
+            },
+            "description": "Submitted on or after this date (YYYY-MM-DD)."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Submitted on or before this date (YYYY-MM-DD).",
+              "title": "To"
+            },
+            "description": "Submitted on or before this date (YYYY-MM-DD)."
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "newest",
+                "oldest"
+              ],
+              "type": "string",
+              "default": "newest",
+              "title": "Sort"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or the token is invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A filter has a bad value, or an unknown filter was sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderator/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "Moderators"
+        ],
+        "summary": "Get one report",
+        "description": "One report in full, with every update, including internal notes.",
+        "operationId": "get_report_api_moderator_reports__report_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or the token is invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The id isn't a UUID, or a field failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Moderators"
+        ],
+        "summary": "Change a report's status",
+        "description": "Move a report to its next status: SUBMITTED to UNDER_REVIEW, then UNDER_REVIEW to RESOLVED or DISMISSED.",
+        "operationId": "change_status_api_moderator_reports__report_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusChangeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or the token is invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The id isn't a UUID, or a field failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The move isn't allowed, the case is closed, or someone else changed it first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderator/reports/{report_id}/updates": {
+      "post": {
+        "tags": [
+          "Moderators"
+        ],
+        "summary": "Add a note",
+        "description": "Add a note without changing the status. Set visible_to_reporter to false for an internal note.",
+        "operationId": "add_update_api_moderator_reports__report_id__updates_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModeratorUpdateOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or the token is invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The id isn't a UUID, or a field failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The case is closed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/moderator/reports/{report_id}/close": {
+      "post": {
+        "tags": [
+          "Moderators"
+        ],
+        "summary": "Close a case for good",
+        "description": "Permanently close a RESOLVED or DISMISSED report. After this, nothing on it can change.",
+        "operationId": "close_report_api_moderator_reports__report_id__close_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Report Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or the token is invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No report has that id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The id isn't a UUID, or a field failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The report isn't RESOLVED or DISMISSED yet, or is already closed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health check",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Category": {
+        "type": "string",
+        "enum": [
+          "SECURITY",
+          "HARASSMENT",
+          "CORRUPTION",
+          "TECHNICAL",
+          "OTHER"
+        ],
+        "title": "Category"
+      },
+      "CategoryOut": {
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "CategoryOut"
+      },
+      "ErrorInfo": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorInfo"
+      },
+      "ErrorOut": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "title": "ErrorOut"
+      },
+      "LoginIn": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginIn",
+        "examples": [
+          {
+            "password": "demo-password-123",
+            "username": "demo"
+          }
+        ]
+      },
+      "ModeratorUpdateOut": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visible_to_reporter": {
+            "type": "boolean",
+            "title": "Visible To Reporter"
+          },
+          "moderator": {
+            "type": "string",
+            "title": "Moderator"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "from_status",
+          "to_status",
+          "visible_to_reporter",
+          "moderator",
+          "created_at"
+        ],
+        "title": "ModeratorUpdateOut"
+      },
+      "NoteIn": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "visible_to_reporter": {
+            "type": "boolean",
+            "title": "Visible To Reporter",
+            "description": "false makes it an internal note between moderators.",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "NoteIn",
+        "examples": [
+          {
+            "message": "Asked the security office for last week's CCTV logs.",
+            "visible_to_reporter": false
+          }
+        ]
+      },
+      "ReportDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "evidence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Url"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "submitted_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Submitted On"
+          },
+          "closed": {
+            "type": "boolean",
+            "title": "Closed"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/ModeratorUpdateOut"
+            },
+            "type": "array",
+            "title": "Updates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "description",
+          "evidence_url",
+          "status",
+          "submitted_on",
+          "closed",
+          "closed_at",
+          "updated_at",
+          "updates"
+        ],
+        "title": "ReportDetail"
+      },
+      "ReportIn": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000,
+            "minLength": 20,
+            "title": "Description"
+          },
+          "evidence_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "category",
+          "description"
+        ],
+        "title": "ReportIn",
+        "examples": [
+          {
+            "category": "SECURITY",
+            "description": "The server room in the Tech Park basement is left unlocked every night after 9pm.",
+            "evidence_url": "https://drive.google.com/file/d/1AbCdEf/view"
+          }
+        ]
+      },
+      "ReportListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "submitted_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Submitted On"
+          },
+          "closed": {
+            "type": "boolean",
+            "title": "Closed"
+          },
+          "description_preview": {
+            "type": "string",
+            "title": "Description Preview"
+          },
+          "has_evidence_url": {
+            "type": "boolean",
+            "title": "Has Evidence Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "status",
+          "submitted_on",
+          "closed",
+          "description_preview",
+          "has_evidence_url"
+        ],
+        "title": "ReportListItem"
+      },
+      "ReportPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportListItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "ReportPage"
+      },
+      "ReportStatusOut": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "submitted_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Submitted On"
+          },
+          "closed": {
+            "type": "boolean",
+            "title": "Closed"
+          },
+          "updates": {
+            "items": {
+              "$ref": "#/components/schemas/ReporterUpdateOut"
+            },
+            "type": "array",
+            "title": "Updates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "status",
+          "submitted_on",
+          "closed",
+          "updates"
+        ],
+        "title": "ReportStatusOut",
+        "examples": [
+          {
+            "category": "SECURITY",
+            "closed": false,
+            "status": "UNDER_REVIEW",
+            "submitted_on": "2026-10-04",
+            "updates": [
+              {
+                "date": "2026-10-04T15:20:00Z",
+                "message": "We've started looking into this.",
+                "status": "UNDER_REVIEW"
+              }
+            ]
+          }
+        ]
+      },
+      "ReporterUpdateOut": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Status"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Date"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "date"
+        ],
+        "title": "ReporterUpdateOut"
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "SUBMITTED",
+          "UNDER_REVIEW",
+          "RESOLVED",
+          "DISMISSED"
+        ],
+        "title": "Status"
+      },
+      "StatusChangeIn": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Leave out to use a default like 'Status changed to Under review.'"
+          },
+          "visible_to_reporter": {
+            "type": "boolean",
+            "title": "Visible To Reporter",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "StatusChangeIn",
+        "examples": [
+          {
+            "note": "We've started looking into this.",
+            "status": "UNDER_REVIEW",
+            "visible_to_reporter": true
+          }
+        ]
+      },
+      "SubmitOut": {
+        "properties": {
+          "case_code": {
+            "type": "string",
+            "title": "Case Code"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "submitted_on": {
+            "type": "string",
+            "format": "date",
+            "title": "Submitted On"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "privacy_tip": {
+            "type": "string",
+            "title": "Privacy Tip"
+          }
+        },
+        "type": "object",
+        "required": [
+          "case_code",
+          "status",
+          "submitted_on",
+          "note",
+          "privacy_tip"
+        ],
+        "title": "SubmitOut",
+        "examples": [
+          {
+            "case_code": "WD-7K3M-Q9XA-2HFD-R8TN",
+            "note": "Save this code now. It's the only way to check on your report and it can't be recovered.",
+            "privacy_tip": "We don't know who you are, but details in your description that only you would know can still point back to you.",
+            "status": "SUBMITTED",
+            "submitted_on": "2026-10-04"
+          }
+        ]
+      },
+      "TokenOut": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in"
+        ],
+        "title": "TokenOut"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "Paste the access_token from POST /api/auth/login.",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Reporters",
+      "description": "Public. No account needed."
+    },
+    {
+      "name": "Moderator login",
+      "description": "Moderator accounts are made with `python -m app.cli create-moderator`."
+    },
+    {
+      "name": "Moderators",
+      "description": "Need `Authorization: Bearer <token>`."
+    },
+    {
+      "name": "Health"
+    }
+  ]
+}
