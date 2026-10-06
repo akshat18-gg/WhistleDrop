@@ -43,19 +43,13 @@ Run the server and open http://localhost:8000/docs:
 uvicorn app.main:app --no-access-log --no-server-header
 ```
 
-Keep both flags. Uvicorn's access log records every client's IP address, and the `server` header advertises what the server is running.
-
-To lock a moderator out, run `python -m app.cli deactivate-moderator alice`. Any token they already have stops working too.
+Keep both flags. Uvicorn's access log records every client's IP address, and the `server` header advertises what the server is running. To lock a moderator out, run `python -m app.cli deactivate-moderator alice`. Any token they already have stops working too.
 
 To deploy your own copy, go to New > Blueprint in the Render dashboard and pick this repo. [`render.yaml`](render.yaml) generates the secrets and the encryption key, and Render asks you for `MODERATOR_PASSWORD`. The free plan has no shell, so the start command creates the `demo` moderator from that password every time the service boots.
 
 ## Tests and the demo script
 
-```bash
-pytest
-```
-
-Every test gets its own fresh SQLite file, so the tests never touch your real database.
+Run `pytest`. Every test gets its own fresh SQLite file, so the tests never touch your real database.
 
 With the server running, open a second terminal and run:
 
