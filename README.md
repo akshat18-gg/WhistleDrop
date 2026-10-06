@@ -75,6 +75,7 @@ python -c "import json; from app.main import app; print(json.dumps(app.openapi()
 | PATCH | `/api/moderator/reports/{id}` | moderators | Changes the status, with an optional note |
 | POST | `/api/moderator/reports/{id}/updates` | moderators | Adds a note, either for the reporter or internal |
 | POST | `/api/moderator/reports/{id}/close` | moderators | Closes a RESOLVED or DISMISSED case for good |
+| GET | `/api/moderator/stats` | moderators | Counts by status and category, how many are open and how many are closed |
 
 ## How anonymity is kept
 
@@ -231,7 +232,6 @@ Closing is a separate step. Once a report is RESOLVED or DISMISSED, a moderator 
 
 ## Not done yet
 
-- A moderator dashboard endpoint with counts by status and category.
 - Rate limiting on submissions and status checks, mostly against spam.
 - Deployment.
 - Encrypting the description and evidence link at rest, so a copied database file is useless on its own.

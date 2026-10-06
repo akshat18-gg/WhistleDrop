@@ -7,7 +7,16 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.errors import ApiError, documented
-from app.models import ALLOWED_MOVES, FINAL_STATUSES, Moderator, Report, Status, StatusUpdate, utcnow
+from app.models import (
+    ALLOWED_MOVES,
+    FINAL_STATUSES,
+    Category,
+    Moderator,
+    Report,
+    Status,
+    StatusUpdate,
+    utcnow,
+)
 from app.schemas import (
     ModeratorUpdateOut,
     NoteIn,
@@ -15,6 +24,7 @@ from app.schemas import (
     ReportFilters,
     ReportListItem,
     ReportPage,
+    StatsOut,
     StatusChangeIn,
 )
 from app.security import current_moderator
@@ -290,3 +300,21 @@ def close_report(
     db.commit()
     db.refresh(report)
     return report_detail(report)
+
+
+@router.get("/stats", response_model=StatsOut, summary="Dashboard counts")
+def stats(db: Session = Depends(get_db)):
+    """How many reports there are by status and by category, and how many still need attention."""
+    by_status = dict.fromkeys(Status, 0) | dict(
+        db.execute(select(Report.status, func.count()).group_by(Report.status)).all()
+    )
+    by_category = dict.fromkeys(Category, 0) | dict(
+        db.execute(select(Report.category, func.count()).group_by(Report.category)).all()
+    )
+    return StatsOut(
+        total=sum(by_status.values()),
+        open=sum(count for status, count in by_status.items() if status not in FINAL_STATUSES),
+        closed=db.scalar(select(func.count()).where(Report.closed_at.is_not(None))),
+        by_status=by_status,
+        by_category=by_category,
+    )

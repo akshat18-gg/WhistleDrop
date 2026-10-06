@@ -221,3 +221,11 @@ class NoteIn(StrictModel):
 
     message: Message
     visible_to_reporter: bool = Field(True, description="false makes it an internal note between moderators.")
+
+
+class StatsOut(BaseModel):
+    total: int
+    open: int = Field(description="SUBMITTED or UNDER_REVIEW: still waiting on a moderator.")
+    closed: int = Field(description="Permanently closed cases.")
+    by_status: dict[Status, int]
+    by_category: dict[Category, int]

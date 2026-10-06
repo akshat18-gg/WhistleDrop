@@ -707,6 +707,43 @@
         }
       }
     },
+    "/api/moderator/stats": {
+      "get": {
+        "tags": [
+          "Moderators"
+        ],
+        "summary": "Dashboard counts",
+        "description": "How many reports there are by status and by category, and how many still need attention.",
+        "operationId": "stats_api_moderator_stats_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token, or the token is invalid or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -1188,6 +1225,53 @@
           "date"
         ],
         "title": "ReporterUpdateOut"
+      },
+      "StatsOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open",
+            "description": "SUBMITTED or UNDER_REVIEW: still waiting on a moderator."
+          },
+          "closed": {
+            "type": "integer",
+            "title": "Closed",
+            "description": "Permanently closed cases."
+          },
+          "by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/Status"
+            },
+            "type": "object",
+            "title": "By Status"
+          },
+          "by_category": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/Category"
+            },
+            "type": "object",
+            "title": "By Category"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "open",
+          "closed",
+          "by_status",
+          "by_category"
+        ],
+        "title": "StatsOut"
       },
       "Status": {
         "type": "string",
