@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from app.db import get_db
 from app.errors import ApiError, documented
 from app.models import Category, Report, utcnow
 from app.schemas import CategoryOut, ReportIn, ReporterUpdateOut, ReportStatusOut, SubmitOut
+from app.security import limiter
 
 router = APIRouter(prefix="/api", tags=["Reporters"])
 
@@ -20,21 +21,10 @@ PRIVACY_TIP = (
 )
 
 
-def find_report_by_case_code(
-    x_case_code: Annotated[
-        str | None,
-        Header(
-            alias="X-Case-Code",
-            description="Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN.",
-        ),
-    ] = None,
-    db: Session = Depends(get_db),
-) -> Report:
-    # The code travels in a header, not the URL, because URLs end up in
-    # server logs, proxy logs and browser history.
-    if not x_case_code:
+def find_report_by_case_code(db: Session, raw_code: str | None) -> Report:
+    if not raw_code:
         raise ApiError(400, "MISSING_CASE_CODE", "Send your case code in the X-Case-Code header.")
-    code = case_codes.normalise(x_case_code)
+    code = case_codes.normalise(raw_code)
     if code is None:
         raise ApiError(
             400,
@@ -63,10 +53,12 @@ def list_categories():
             400: "The body isn't valid JSON",
             413: "The body is over 32 KB",
             422: "A field failed validation, or an unknown field was sent",
+            429: "More than 10 reports in an hour from the same client",
         }
     ),
 )
-def submit_report(body: ReportIn, db: Session = Depends(get_db)):
+@limiter.limit("10/hour")
+def submit_report(request: Request, body: ReportIn, db: Session = Depends(get_db)):
     """Submit a report. No account and no name needed. The response holds your case code, shown only once."""
     for _ in range(3):
         code = case_codes.generate()
@@ -102,11 +94,28 @@ def submit_report(body: ReportIn, db: Session = Depends(get_db)):
         {
             400: "The X-Case-Code header is missing or isn't shaped like a case code",
             404: "No report matches that case code",
+            429: "More than 30 checks in a minute from the same client",
         }
     ),
 )
-def check_status(report: Report = Depends(find_report_by_case_code)):
+@limiter.limit("30/minute")
+def check_status(
+    request: Request,
+    # The code travels in a header, not the URL, because URLs end up in
+    # server logs, proxy logs and browser history.
+    x_case_code: Annotated[
+        str | None,
+        Header(
+            alias="X-Case-Code",
+            description="Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN.",
+        ),
+    ] = None,
+    db: Session = Depends(get_db),
+):
     """Check on your report with your case code. Shows the status and the updates moderators chose to share."""
+    # Looked up here rather than in a dependency, so the rate limit above
+    # also counts lookups that fail with 400 or 404.
+    report = find_report_by_case_code(db, x_case_code)
     return ReportStatusOut(
         category=report.category,
         status=report.status,

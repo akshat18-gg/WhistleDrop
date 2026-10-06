@@ -90,6 +90,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "More than 10 reports in an hour from the same client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
           }
         }
       }
@@ -152,6 +162,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "More than 30 checks in a minute from the same client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
           }
         }
       }
@@ -197,6 +217,16 @@
           },
           "422": {
             "description": "Username or password missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "More than 10 attempts in a minute from the same client",
             "content": {
               "application/json": {
                 "schema": {

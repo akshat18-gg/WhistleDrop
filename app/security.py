@@ -1,10 +1,15 @@
+import hashlib
+import hmac
+import logging
+import secrets
 from datetime import timedelta
 
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from slowapi import Limiter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -82,3 +87,21 @@ def current_moderator(
     if moderator is None or not moderator.is_active:
         raise _unauthorized("INVALID_TOKEN", "That token isn't valid. Log in again.")
     return moderator
+
+
+# The rate limiter needs something that tells clients apart, and the IP address is
+# the only thing available. This is the one place the app reads it. It's hashed
+# with a random key that only exists in memory and changes on every restart, and
+# the limiter's counters live in memory too. The IP is never logged or stored.
+_RATE_LIMIT_KEY = secrets.token_bytes(32)
+
+
+def client_fingerprint(request: Request) -> str:
+    ip = request.client.host if request.client else "unknown"
+    return hmac.new(_RATE_LIMIT_KEY, ip.encode(), hashlib.sha256).hexdigest()
+
+
+limiter = Limiter(key_func=client_fingerprint, storage_uri="memory://")
+# slowapi logs a warning with the client's key every time a limit is hit. Our own
+# request log already records the 429, without anything that tells clients apart.
+logging.getLogger("slowapi").setLevel(logging.ERROR)

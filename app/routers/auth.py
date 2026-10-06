@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.errors import ApiError, documented
 from app.schemas import LoginIn, TokenOut
-from app.security import TOKEN_LIFETIME, authenticate, create_token
+from app.security import TOKEN_LIFETIME, authenticate, create_token, limiter
 
 router = APIRouter(prefix="/api/auth", tags=["Moderator login"])
 
@@ -13,9 +13,16 @@ router = APIRouter(prefix="/api/auth", tags=["Moderator login"])
     "/login",
     response_model=TokenOut,
     summary="Log in",
-    responses=documented({401: "Wrong username or password", 422: "Username or password missing"}),
+    responses=documented(
+        {
+            401: "Wrong username or password",
+            422: "Username or password missing",
+            429: "More than 10 attempts in a minute from the same client",
+        }
+    ),
 )
-def login(body: LoginIn, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, body: LoginIn, db: Session = Depends(get_db)):
     """Log in as a moderator. The token lasts 60 minutes."""
     moderator = authenticate(db, body.username, body.password)
     if moderator is None:

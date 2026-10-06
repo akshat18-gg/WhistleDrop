@@ -91,12 +91,13 @@ The main idea is that the database never holds anything that points to a person.
 - **The request log is minimal.** Each request gets one line: method, route template, status and duration, like `POST /api/reports 201 4ms`. There's no IP, header, body, query string or timestamp. Unknown paths are logged as `(no matching route)`, in case someone pastes their code into the URL. SQLAlchemy runs with `hide_parameters=True`, so report text can't end up in an error traceback.
 - **The reporter view is small.** It doesn't include the description, so someone who finds a code sees a status, not the report. Updates don't say which moderator wrote them, and internal notes don't show at all.
 - **Headers.** API responses send `Cache-Control: no-store`. Every response sends `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`.
+- **Rate limits without keeping IPs.** A client can submit 10 reports an hour, check status 30 times a minute and try logging in 10 times a minute. The limiter is the one place that reads the client's IP. It hashes the IP with a random key that exists only in memory and changes on every restart, and the counters live in memory too. Nothing about the client is logged or stored. Guessing an 80-bit code is already hopeless, so the limits are mostly about spam. They also count failed status lookups, so nobody can make unlimited guesses.
 
 Some things the backend can't protect:
 
 - **What the reporter writes.** If the description says "I'm the only TA in the lab on Tuesday nights", hashing doesn't help. The submit response reminds them of this.
 - **Where the evidence link points.** A Google Drive or OneDrive link can show the owner's name and email to anyone who opens it. Reporters should use a link that isn't tied to their account.
-- **Logs kept by the host or the network.** My code never reads `request.client` or `X-Forwarded-For`, but a hosting provider, reverse proxy or college network in front of it can keep its own logs with IP addresses and exact times. Most hosts also timestamp everything an app prints. Someone who needs strong anonymity should report from a network that isn't theirs, or through Tor.
+- **Logs kept by the host or the network.** Apart from the rate limiter, my code never reads `request.client` or `X-Forwarded-For`. But a hosting provider, reverse proxy or college network in front of it can keep its own logs with IP addresses and exact times. Most hosts also timestamp everything an app prints. Someone who needs strong anonymity should report from a network that isn't theirs, or through Tor.
 
 ## Example requests and responses
 
@@ -232,7 +233,6 @@ Closing is a separate step. Once a report is RESOLVED or DISMISSED, a moderator 
 
 ## Not done yet
 
-- Rate limiting on submissions and status checks, mostly against spam.
 - Deployment.
 - Encrypting the description and evidence link at rest, so a copied database file is useless on its own.
 - Evidence file uploads with metadata stripped from images.

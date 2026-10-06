@@ -43,6 +43,7 @@ FRAMEWORK_ERRORS = {
     400: ("BAD_REQUEST", "The request couldn't be read."),
     404: ("NOT_FOUND", "There's nothing at this address."),
     405: ("METHOD_NOT_ALLOWED", "This address doesn't support that method."),
+    429: ("RATE_LIMITED", "Too many requests. Wait a while and try again."),
 }
 
 SIMPLE_PROBLEMS = {

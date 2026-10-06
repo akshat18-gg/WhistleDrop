@@ -9,6 +9,7 @@ from app import errors
 from app.db import create_tables
 from app.errors import ApiError, error_response
 from app.routers import auth, moderator, reports
+from app.security import limiter
 
 # No timestamp in the format on purpose: a timed log line for POST /api/reports
 # would give away exactly when a report came in.
@@ -50,6 +51,7 @@ app = FastAPI(
     openapi_tags=TAGS,
     lifespan=lifespan,
 )
+app.state.limiter = limiter
 errors.register(app)
 
 

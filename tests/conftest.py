@@ -11,7 +11,7 @@ from sqlalchemy import select  # noqa: E402
 from app import case_codes, db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Moderator, Report  # noqa: E402
-from app.security import hash_password  # noqa: E402
+from app.security import hash_password, limiter  # noqa: E402
 
 MOD_PASSWORD = "correct-horse-battery"
 
@@ -30,6 +30,15 @@ def engine(tmp_path, monkeypatch):
     db.create_tables()
     yield test_engine
     test_engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def no_rate_limits():
+    """Lots of tests submit more than 10 reports. The rate limit tests switch it back on."""
+    limiter.enabled = False
+    limiter.reset()
+    yield
+    limiter.enabled = False
 
 
 @pytest.fixture
