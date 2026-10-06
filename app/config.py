@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,4 +14,11 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    try:
+        return Settings()
+    except ValidationError as exc:
+        names = sorted({str(error["loc"][0]).upper() for error in exc.errors()})
+        raise SystemExit(
+            f"Refusing to start: {', '.join(names)} must be set and at least 32 characters long. "
+            "Copy .env.example to .env and fill it in."
+        ) from None
