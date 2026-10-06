@@ -58,7 +58,17 @@ def test_no_response_ever_contains_the_case_code_hash(client, auth, submit, sess
     reporter = {"X-Case-Code": code}
     base = f"/api/moderator/reports/{report_id}"
 
+    uploaded = client.post(
+        "/api/reports/evidence",
+        headers={**reporter, "Content-Type": "application/octet-stream"},
+        content=b"%PDF-1.4\n%%EOF\n",
+    )
+    file_id = client.get(base, headers=auth).json()["evidence_files"][0]["id"]
+
     responses = [
+        uploaded,
+        client.get(f"{base}/evidence/{file_id}", headers=auth),
+        client.get("/api/moderator/stats", headers=auth),
         client.get("/health"),
         client.get("/api/categories"),
         client.get("/api/reports/status", headers=reporter),

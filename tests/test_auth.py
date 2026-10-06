@@ -75,6 +75,23 @@ def test_every_moderator_route_rejects_a_bad_token(client, method, path):
     assert response.headers["www-authenticate"] == "Bearer"
 
 
+@pytest.mark.parametrize("method, path", list(moderator_routes()))
+def test_every_moderator_route_rejects_an_expired_token(client, moderator, method, path):
+    token = make_token(sub=str(moderator.id), exp=utcnow() - timedelta(seconds=1))
+    response = client.request(method, path, headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "TOKEN_EXPIRED"
+
+
+@pytest.mark.parametrize("method, path", list(moderator_routes()))
+def test_every_moderator_route_rejects_a_deactivated_moderator(client, auth, moderator, session, method, path):
+    moderator.is_active = False
+    session.commit()
+    response = client.request(method, path, headers=auth)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
 @pytest.mark.parametrize(
     "header",
     [
