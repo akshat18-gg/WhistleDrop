@@ -2,14 +2,19 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.errors import ApiError
+from app.errors import ApiError, documented
 from app.schemas import LoginIn, TokenOut
 from app.security import TOKEN_LIFETIME, authenticate, create_token
 
 router = APIRouter(prefix="/api/auth", tags=["Moderator login"])
 
 
-@router.post("/login", response_model=TokenOut)
+@router.post(
+    "/login",
+    response_model=TokenOut,
+    summary="Log in",
+    responses=documented({401: "Wrong username or password", 422: "Username or password missing"}),
+)
 def login(body: LoginIn, db: Session = Depends(get_db)):
     """Log in as a moderator. The token lasts 60 minutes."""
     moderator = authenticate(db, body.username, body.password)

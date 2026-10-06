@@ -31,6 +31,18 @@ class StrictModel(BaseModel):
 
 
 class ReportIn(StrictModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "category": "SECURITY",
+                    "description": "The server room in the Tech Park basement is left unlocked every night after 9pm.",
+                    "evidence_url": "https://drive.google.com/file/d/1AbCdEf/view",
+                }
+            ]
+        }
+    )
+
     category: CategoryIn
     description: Annotated[str, StringConstraints(strip_whitespace=True, min_length=20, max_length=5000)]
     evidence_url: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2048)] | None = None
@@ -58,6 +70,20 @@ class CategoryOut(BaseModel):
 
 
 class SubmitOut(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "case_code": "WD-7K3M-Q9XA-2HFD-R8TN",
+                    "status": "SUBMITTED",
+                    "submitted_on": "2026-10-04",
+                    "note": "Save this code now. It's the only way to check on your report and it can't be recovered.",
+                    "privacy_tip": "We don't know who you are, but details in your description that only you would know can still point back to you.",
+                }
+            ]
+        }
+    )
+
     case_code: str
     status: Status
     submitted_on: date
@@ -72,6 +98,26 @@ class ReporterUpdateOut(BaseModel):
 
 
 class ReportStatusOut(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "category": "SECURITY",
+                    "status": "UNDER_REVIEW",
+                    "submitted_on": "2026-10-04",
+                    "closed": False,
+                    "updates": [
+                        {
+                            "status": "UNDER_REVIEW",
+                            "message": "We've started looking into this.",
+                            "date": "2026-10-04T15:20:00Z",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
     category: Category
     status: Status
     submitted_on: date
@@ -80,6 +126,8 @@ class ReportStatusOut(BaseModel):
 
 
 class LoginIn(StrictModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"username": "demo", "password": "demo-password-123"}]})
+
     username: Annotated[str, StringConstraints(min_length=1, max_length=64)]
     password: Annotated[str, StringConstraints(min_length=1, max_length=128)]
 
@@ -151,11 +199,25 @@ class ReportDetail(BaseModel):
 
 
 class StatusChangeIn(StrictModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"status": "UNDER_REVIEW", "note": "We've started looking into this.", "visible_to_reporter": True}
+            ]
+        }
+    )
+
     status: StatusIn
     note: Message | None = Field(None, description="Leave out to use a default like 'Status changed to Under review.'")
     visible_to_reporter: bool = True
 
 
 class NoteIn(StrictModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [{"message": "Asked the security office for last week's CCTV logs.", "visible_to_reporter": False}]
+        }
+    )
+
     message: Message
     visible_to_reporter: bool = Field(True, description="false makes it an internal note between moderators.")

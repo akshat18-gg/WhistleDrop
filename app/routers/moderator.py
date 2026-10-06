@@ -6,7 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.errors import ApiError
+from app.errors import ApiError, documented
 from app.models import ALLOWED_MOVES, FINAL_STATUSES, Moderator, Report, Status, StatusUpdate, utcnow
 from app.schemas import (
     ModeratorUpdateOut,
@@ -23,7 +23,11 @@ router = APIRouter(
     prefix="/api/moderator",
     tags=["Moderators"],
     dependencies=[Depends(current_moderator)],
+    responses=documented({401: "No token, or the token is invalid or expired"}),
 )
+
+NOT_FOUND = {404: "No report has that id"}
+BAD_ID = {422: "The id isn't a UUID, or a field failed validation"}
 
 PREVIEW_LENGTH = 200
 
@@ -138,7 +142,12 @@ def report_detail(report: Report) -> ReportDetail:
     )
 
 
-@router.get("/reports", response_model=ReportPage)
+@router.get(
+    "/reports",
+    response_model=ReportPage,
+    summary="List and filter reports",
+    responses=documented({422: "A filter has a bad value, or an unknown filter was sent"}),
+)
 def list_reports(filters: Annotated[ReportFilters, Query()], db: Session = Depends(get_db)):
     """List reports, newest first by default. All filters are optional and can be combined."""
     query = select(Report)
@@ -182,13 +191,27 @@ def list_reports(filters: Annotated[ReportFilters, Query()], db: Session = Depen
     )
 
 
-@router.get("/reports/{report_id}", response_model=ReportDetail)
+@router.get(
+    "/reports/{report_id}",
+    response_model=ReportDetail,
+    summary="Get one report",
+    responses=documented(NOT_FOUND | BAD_ID),
+)
 def get_report(report_id: uuid.UUID, db: Session = Depends(get_db)):
     """One report in full, with every update, including internal notes."""
     return report_detail(get_report_or_404(db, report_id))
 
 
-@router.patch("/reports/{report_id}", response_model=ReportDetail)
+@router.patch(
+    "/reports/{report_id}",
+    response_model=ReportDetail,
+    summary="Change a report's status",
+    responses=documented(
+        NOT_FOUND
+        | BAD_ID
+        | {409: "The move isn't allowed, the case is closed, or someone else changed it first"}
+    ),
+)
 def change_status(
     report_id: uuid.UUID,
     body: StatusChangeIn,
@@ -201,7 +224,13 @@ def change_status(
     return report_detail(report)
 
 
-@router.post("/reports/{report_id}/updates", status_code=201, response_model=ModeratorUpdateOut)
+@router.post(
+    "/reports/{report_id}/updates",
+    status_code=201,
+    response_model=ModeratorUpdateOut,
+    summary="Add a note",
+    responses=documented(NOT_FOUND | BAD_ID | {409: "The case is closed"}),
+)
 def add_update(
     report_id: uuid.UUID,
     body: NoteIn,
@@ -225,7 +254,14 @@ def add_update(
     return update_out(note)
 
 
-@router.post("/reports/{report_id}/close", response_model=ReportDetail)
+@router.post(
+    "/reports/{report_id}/close",
+    response_model=ReportDetail,
+    summary="Close a case for good",
+    responses=documented(
+        NOT_FOUND | BAD_ID | {409: "The report isn't RESOLVED or DISMISSED yet, or is already closed"}
+    ),
+)
 def close_report(
     report_id: uuid.UUID,
     moderator: Moderator = Depends(current_moderator),

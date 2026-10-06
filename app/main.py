@@ -24,8 +24,51 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="WhistleDrop", version="1.0.0", lifespan=lifespan)
+DESCRIPTION = """
+A confidential reporting API. Anyone can submit a report without an account or a name,
+and track it later with the case code they get back.
+
+**Reporters:** submit with `POST /api/reports` and save the `case_code` from the response.
+To check on it, call `GET /api/reports/status` with the code in the `X-Case-Code` header.
+
+**Moderators:** log in with `POST /api/auth/login`, click **Authorize** and paste the `access_token`.
+
+Every error looks like `{"error": {"code", "message", "details"}}`.
+"""
+
+TAGS = [
+    {"name": "Reporters", "description": "Public. No account needed."},
+    {"name": "Moderator login", "description": "Moderator accounts are made with `python -m app.cli create-moderator`."},
+    {"name": "Moderators", "description": "Need `Authorization: Bearer <token>`."},
+    {"name": "Health"},
+]
+
+app = FastAPI(
+    title="WhistleDrop",
+    version="1.0.0",
+    description=DESCRIPTION,
+    openapi_tags=TAGS,
+    lifespan=lifespan,
+)
 errors.register(app)
+
+
+def openapi_schema():
+    # FastAPI adds its own 422 entry, in its own error shape, to every route with
+    # parameters. We document our 422s by hand where they can actually happen,
+    # so drop the generated ones.
+    if app.openapi_schema is None:
+        schema = FastAPI.openapi(app)
+        for operations in schema["paths"].values():
+            for operation in operations.values():
+                if operation["responses"].get("422", {}).get("description") == "Validation Error":
+                    del operation["responses"]["422"]
+        schema["components"]["schemas"].pop("HTTPValidationError", None)
+        schema["components"]["schemas"].pop("ValidationError", None)
+    return app.openapi_schema
+
+
+app.openapi = openapi_schema
 app.include_router(reports.router)
 app.include_router(auth.router)
 app.include_router(moderator.router)
@@ -91,6 +134,6 @@ async def headers_and_logging(request: Request, call_next):
     return response
 
 
-@app.get("/health")
+@app.get("/health", tags=["Health"], summary="Health check")
 def health():
     return {"status": "ok"}

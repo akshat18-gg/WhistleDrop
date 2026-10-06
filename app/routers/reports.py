@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import case_codes
 from app.db import get_db
-from app.errors import ApiError
+from app.errors import ApiError, documented
 from app.models import Category, Report, utcnow
 from app.schemas import CategoryOut, ReportIn, ReporterUpdateOut, ReportStatusOut, SubmitOut
 
@@ -25,7 +25,7 @@ def find_report_by_case_code(
         str | None,
         Header(
             alias="X-Case-Code",
-            description="The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN.",
+            description="Required. The case code you got when you submitted, like WD-7K3M-Q9XA-2HFD-R8TN.",
         ),
     ] = None,
     db: Session = Depends(get_db),
@@ -47,13 +47,25 @@ def find_report_by_case_code(
     return report
 
 
-@router.get("/categories", response_model=list[CategoryOut])
+@router.get("/categories", response_model=list[CategoryOut], summary="List categories")
 def list_categories():
     """The categories a report can be filed under."""
     return [CategoryOut(value=category, label=category.label) for category in Category]
 
 
-@router.post("/reports", status_code=201, response_model=SubmitOut)
+@router.post(
+    "/reports",
+    status_code=201,
+    response_model=SubmitOut,
+    summary="Submit a report",
+    responses=documented(
+        {
+            400: "The body isn't valid JSON",
+            413: "The body is over 32 KB",
+            422: "A field failed validation, or an unknown field was sent",
+        }
+    ),
+)
 def submit_report(body: ReportIn, db: Session = Depends(get_db)):
     """Submit a report. No account and no name needed. The response holds your case code, shown only once."""
     for _ in range(3):
@@ -82,7 +94,17 @@ def submit_report(body: ReportIn, db: Session = Depends(get_db)):
     raise RuntimeError("Couldn't generate an unused case code after 3 tries")
 
 
-@router.get("/reports/status", response_model=ReportStatusOut)
+@router.get(
+    "/reports/status",
+    response_model=ReportStatusOut,
+    summary="Check on your report",
+    responses=documented(
+        {
+            400: "The X-Case-Code header is missing or isn't shaped like a case code",
+            404: "No report matches that case code",
+        }
+    ),
+)
 def check_status(report: Report = Depends(find_report_by_case_code)):
     """Check on your report with your case code. Shows the status and the updates moderators chose to share."""
     return ReportStatusOut(

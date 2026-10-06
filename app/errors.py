@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from starlette.exceptions import HTTPException
 
 logger = logging.getLogger("whistledrop")
@@ -15,6 +16,21 @@ class ApiError(HTTPException):
         super().__init__(status_code, detail=message, headers=headers)
         self.code = code
         self.details = details
+
+
+class ErrorInfo(BaseModel):
+    code: str
+    message: str
+    details: list[dict[str, str]] | None = None
+
+
+class ErrorOut(BaseModel):
+    error: ErrorInfo
+
+
+def documented(errors: dict[int, str]) -> dict:
+    """Describes the errors a route can return, for the OpenAPI docs."""
+    return {status: {"model": ErrorOut, "description": text} for status, text in errors.items()}
 
 
 def error_response(status_code: int, code: str, message: str, details=None, headers=None):
