@@ -2,6 +2,8 @@
 
 A backend for confidential reporting, built for the GDG on Campus SRM recruitment task. Anyone can report a problem without an account and without saying who they are. They get a case code to follow up with, and moderators review and manage the reports. There's no frontend. You use it through Swagger at `/docs`, or with curl.
 
+Live docs: https://whistledrop.onrender.com/docs. It's on Render's free plan, so the first request after a quiet spell takes about a minute while it wakes up. The free plan also wipes the disk whenever the service sleeps, restarts or redeploys, so the database starts empty each time.
+
 ## Setup
 
 You need Python 3.11 or newer.
@@ -38,6 +40,8 @@ uvicorn app.main:app --no-access-log --no-server-header
 Keep both flags. Uvicorn's access log records every client's IP address, and the `server` header advertises what the server is running.
 
 To lock a moderator out, run `python -m app.cli deactivate-moderator alice`. Any token they already have stops working too.
+
+To deploy your own copy, go to New > Blueprint in the Render dashboard and pick this repo. [`render.yaml`](render.yaml) generates both secrets, and Render asks you for `MODERATOR_PASSWORD`. The free plan has no shell, so the start command creates the `demo` moderator from that password every time the service boots.
 
 ## Tests and the demo script
 
@@ -91,7 +95,7 @@ The main idea is that the database never holds anything that points to a person.
 - **The request log is minimal.** Each request gets one line: method, route template, status and duration, like `POST /api/reports 201 4ms`. There's no IP, header, body, query string or timestamp. Unknown paths are logged as `(no matching route)`, in case someone pastes their code into the URL. SQLAlchemy runs with `hide_parameters=True`, so report text can't end up in an error traceback.
 - **The reporter view is small.** It doesn't include the description, so someone who finds a code sees a status, not the report. Updates don't say which moderator wrote them, and internal notes don't show at all.
 - **Headers.** API responses send `Cache-Control: no-store`. Every response sends `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`.
-- **Rate limits without keeping IPs.** A client can submit 10 reports an hour, check status 30 times a minute and try logging in 10 times a minute. The limiter is the one place that reads the client's IP. It hashes the IP with a random key that exists only in memory and changes on every restart, and the counters live in memory too. Nothing about the client is logged or stored. Guessing an 80-bit code is already hopeless, so the limits are mostly about spam. They also count failed status lookups, so nobody can make unlimited guesses.
+- **Rate limits without keeping IPs.** A client can submit 10 reports an hour, check status 30 times a minute and try logging in 10 times a minute. The limiter is the one place that reads the client's IP. It hashes the IP with a random key that exists only in memory and changes on every restart, and the counters live in memory too. Nothing about the client is logged or stored. Guessing an 80-bit code is already hopeless, so the limits are mostly about spam. They also count failed status lookups, so nobody can make unlimited guesses. On Render the app sits behind a proxy, so uvicorn takes the client address from `X-Forwarded-For`. A determined spammer could fake that header, so the limits only stop casual spam.
 
 Some things the backend can't protect:
 
@@ -218,7 +222,7 @@ Closing is a separate step. Once a report is RESOLVED or DISMISSED, a moderator 
 - **Case-insensitive categories and statuses.** `"security"` works and is stored as `SECURITY`. The same goes for status values and list filters.
 - **No shortcut from SUBMITTED to DISMISSED.** Even obvious spam goes through UNDER_REVIEW first. It costs one extra step, but every dismissal means someone actually looked at the report.
 - **Closing adds a visible update**, "This case is now closed.", which also records which moderator closed it.
-- **SQLite.** It's one file and needs no setup. The conditional updates mean two moderators can't overwrite each other's changes.
+- **SQLite.** It's one file and needs no setup. The conditional updates mean two moderators can't overwrite each other's changes. On Render's free plan the file doesn't last, which is fine for a demo but not for real use.
 
 ## Screenshots
 
@@ -233,7 +237,6 @@ Closing is a separate step. Once a report is RESOLVED or DISMISSED, a moderator 
 
 ## Not done yet
 
-- Deployment.
 - Encrypting the description and evidence link at rest, so a copied database file is useless on its own.
 - Evidence file uploads with metadata stripped from images.
 - Postgres instead of SQLite if this ever had real traffic, with Alembic migrations instead of `create_all`.

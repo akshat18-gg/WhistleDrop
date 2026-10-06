@@ -1,0 +1,33 @@
+# Deploy with New > Blueprint in the Render dashboard and pick this repo.
+#
+# The free plan has no shell, so the start command creates the moderator itself
+# from MODERATOR_USERNAME and MODERATOR_PASSWORD. Render asks for the password
+# when you create the Blueprint, so it never sits in the repo.
+#
+# The free plan also wipes the disk on every redeploy, restart and spin-down,
+# so the SQLite database starts empty each time and the moderator is made again.
+#
+# --forwarded-allow-ips='*' is there because Render's proxy sits in front of the
+# app. Without it every client looks like the proxy and they'd all share one
+# rate limit.
+services:
+  - type: web
+    name: whistledrop
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: >-
+      printf '%s\n' "$MODERATOR_PASSWORD" | python -m app.cli create-moderator "$MODERATOR_USERNAME" --password-stdin || true;
+      exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --no-access-log --no-server-header --forwarded-allow-ips='*'
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.15
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CASE_CODE_SECRET
+        generateValue: true
+      - key: MODERATOR_USERNAME
+        value: demo
+      - key: MODERATOR_PASSWORD
+        sync: false
