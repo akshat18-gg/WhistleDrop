@@ -4,6 +4,7 @@ sqlalchemy==2.0.54
 pydantic==2.13.5
 pydantic-settings==2.15.0
 argon2-cffi==25.1.0
+cryptography==50.0.2
 pyjwt==2.15.1
 slowapi==0.1.10
 pytest==9.1.1

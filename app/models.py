@@ -1,10 +1,13 @@
 import enum
 import uuid
 from datetime import date, datetime, timezone
+from functools import lru_cache
 
+from cryptography.fernet import Fernet
 from sqlalchemy import Date, DateTime, Enum, ForeignKey, String, Text, TypeDecorator, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.config import get_settings
 from app.db import Base
 
 
@@ -66,6 +69,32 @@ class UTCDateTime(TypeDecorator):
         return value
 
 
+@lru_cache
+def _fernet() -> Fernet:
+    return Fernet(get_settings().encryption_key)
+
+
+class EncryptedText(TypeDecorator):
+    """Encrypted with Fernet before it's written, decrypted when it's read.
+    A copy of the database file is useless without ENCRYPTION_KEY."""
+
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        # A Fernet token normally carries the time it was made, unencrypted. That
+        # would be the exact submission time, so every token gets 0 instead. We
+        # never use Fernet's expiry check, so nothing depends on the real time.
+        return _fernet().encrypt_at_time(value.encode(), 0).decode()
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return _fernet().decrypt(value).decode()
+
+
 class Report(Base):
     __tablename__ = "reports"
     # A normal SQLite table has a hidden rowid that counts up with every insert,
@@ -76,8 +105,8 @@ class Report(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     case_code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     category: Mapped[Category] = mapped_column(enum_type(Category))
-    description: Mapped[str] = mapped_column(Text)
-    evidence_url: Mapped[str | None] = mapped_column(String(2048))
+    description: Mapped[str] = mapped_column(EncryptedText)
+    evidence_url: Mapped[str | None] = mapped_column(EncryptedText)
     status: Mapped[Status] = mapped_column(enum_type(Status), default=Status.SUBMITTED)
     # Date only. An exact time could be matched to whoever was at their desk at 10:42.
     submitted_on: Mapped[date] = mapped_column(Date)

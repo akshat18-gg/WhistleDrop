@@ -2,6 +2,7 @@ import os
 
 os.environ["JWT_SECRET"] = "test-jwt-secret-that-is-long-enough-1234"
 os.environ["CASE_CODE_SECRET"] = "test-case-code-secret-long-enough-5678"
+os.environ["ENCRYPTION_KEY"] = "N2xvbmctZW5vdWdoLWZvci1hLWZlcm5ldC1rZXktMTI="
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

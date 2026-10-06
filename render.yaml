@@ -27,6 +27,8 @@ services:
         generateValue: true
       - key: CASE_CODE_SECRET
         generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
       - key: MODERATOR_USERNAME
         value: demo
       - key: MODERATOR_PASSWORD

@@ -192,28 +192,56 @@ def test_settings_refuse_short_or_missing_secrets(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)  # no .env file here
     monkeypatch.setenv("JWT_SECRET", "too-short")
     monkeypatch.delenv("CASE_CODE_SECRET")
+    monkeypatch.setenv("ENCRYPTION_KEY", "not-a-fernet-key")
     get_settings.cache_clear()
     try:
-        with pytest.raises(SystemExit, match="CASE_CODE_SECRET, JWT_SECRET must be set and at least 32"):
+        with pytest.raises(SystemExit) as refused:
             get_settings()
     finally:
         monkeypatch.undo()
         get_settings.cache_clear()
+    message = str(refused.value)
+    assert message.startswith("Refusing to start.")
+    assert "CASE_CODE_SECRET has to be at least 32 characters" in message
+    assert "JWT_SECRET has to be at least 32 characters" in message
+    assert "ENCRYPTION_KEY has to be a Fernet key" in message
+
+
+GOOD_SECRETS = {
+    "JWT_SECRET": "x" * 40,
+    "CASE_CODE_SECRET": "y" * 40,
+    "ENCRYPTION_KEY": "N2xvbmctZW5vdWdoLWZvci1hLWZlcm5ldC1rZXktMTI=",
+}
 
 
 @pytest.mark.parametrize(
-    "env",
-    [{}, {"JWT_SECRET": "x" * 40}, {"JWT_SECRET": "x" * 40, "CASE_CODE_SECRET": "y" * 31}],
-    ids=["none set", "one missing", "one too short"],
+    "overrides",
+    [
+        {"JWT_SECRET": None, "CASE_CODE_SECRET": None, "ENCRYPTION_KEY": None},
+        {"CASE_CODE_SECRET": None},
+        {"CASE_CODE_SECRET": "y" * 31},
+        {"ENCRYPTION_KEY": None},
+        {"ENCRYPTION_KEY": "too-short-to-be-a-key"},
+    ],
+    ids=["none set", "one missing", "one too short", "no encryption key", "bad encryption key"],
 )
-def test_app_refuses_to_start_without_proper_secrets(tmp_path, env):
-    clean_env = {k: v for k, v in os.environ.items() if k not in ("JWT_SECRET", "CASE_CODE_SECRET")}
+def test_app_refuses_to_start_without_proper_secrets(tmp_path, overrides):
+    env = {k: v for k, v in os.environ.items() if k not in GOOD_SECRETS}
+    for name, value in {**GOOD_SECRETS, **overrides}.items():
+        if value is not None:
+            env[name] = value
     result = subprocess.run(
         [sys.executable, "-c", "import app.main"],
         cwd=tmp_path,
-        env={**clean_env, **env, "PYTHONPATH": str(PROJECT_ROOT)},
+        env={**env, "PYTHONPATH": str(PROJECT_ROOT)},
         capture_output=True,
         text=True,
     )
     assert result.returncode == 1
     assert "Refusing to start" in result.stderr
+
+
+def test_app_starts_with_proper_secrets(tmp_path):
+    env = {**os.environ, **GOOD_SECRETS, "PYTHONPATH": str(PROJECT_ROOT)}
+    result = subprocess.run([sys.executable, "-c", "import app.main"], cwd=tmp_path, env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

@@ -48,10 +48,6 @@ def preview(text: str) -> str:
     return text[: PREVIEW_LENGTH - 1].rstrip() + "…"
 
 
-def escape_like(text: str) -> str:
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 def get_report_or_404(db: Session, report_id: uuid.UUID) -> Report:
     report = db.get(Report, report_id)
     if report is None:
@@ -165,22 +161,26 @@ def list_reports(filters: Annotated[ReportFilters, Query()], db: Session = Depen
         query = query.where(Report.status == filters.status)
     if filters.category:
         query = query.where(Report.category == filters.category)
-    if filters.q:
-        query = query.where(Report.description.ilike(f"%{escape_like(filters.q)}%", escape="\\"))
     if filters.from_:
         query = query.where(Report.submitted_on >= filters.from_)
     if filters.to:
         query = query.where(Report.submitted_on <= filters.to)
 
-    total = db.scalar(select(func.count()).select_from(query.subquery()))
-
     by_date = Report.submitted_on.desc() if filters.sort == "newest" else Report.submitted_on.asc()
     # Within one day, order by the random id, so the order says nothing about who submitted first.
-    reports = db.scalars(
-        query.order_by(by_date, Report.id)
-        .offset((filters.page - 1) * filters.page_size)
-        .limit(filters.page_size)
-    ).all()
+    query = query.order_by(by_date, Report.id)
+    start = (filters.page - 1) * filters.page_size
+
+    if filters.q:
+        # Descriptions are encrypted, so the database can't search them. The other
+        # filters still run in SQL; the text search runs here on what's left.
+        needle = filters.q.casefold()
+        matches = [report for report in db.scalars(query) if needle in report.description.casefold()]
+        total = len(matches)
+        reports = matches[start : start + filters.page_size]
+    else:
+        total = db.scalar(select(func.count()).select_from(query.subquery()))
+        reports = db.scalars(query.offset(start).limit(filters.page_size)).all()
 
     return ReportPage(
         items=[
