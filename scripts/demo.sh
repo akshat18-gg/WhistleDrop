@@ -4,14 +4,30 @@
 #
 #   ./scripts/demo.sh
 #
-# Set BASE_URL to point it somewhere other than http://localhost:8000.
+# Against the live site, pass its address and the moderator password you gave Render:
+#
+#   BASE_URL=https://your-service.onrender.com DEMO_PASS=... ./scripts/demo.sh
+#
+# DEMO_USER defaults to "demo", the same as MODERATOR_USERNAME in render.yaml.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 BASE_URL="${BASE_URL:-http://localhost:8000}"
-DEMO_USER="demo"
-DEMO_PASSWORD="demo-password-123"
+BASE_URL="${BASE_URL%/}"
+DEMO_USER="${DEMO_USER:-demo}"
+
+case "$BASE_URL" in
+  http://localhost* | http://127.0.0.1*) LOCAL=true ;;
+  *) LOCAL=false ;;
+esac
+
+if [ "$LOCAL" = true ]; then
+  DEMO_PASS="${DEMO_PASS:-demo-password-123}"
+elif [ -z "${DEMO_PASS:-}" ]; then
+  echo "Set DEMO_PASS to the MODERATOR_PASSWORD you gave Render." >&2
+  exit 1
+fi
 # A random room number, so the moderator can find this run's report with a search
 # even if the database already has reports from earlier runs.
 ROOM="TP-$RANDOM"
@@ -45,7 +61,7 @@ call() {
         *) echo "> $arg" ;;
       esac
     elif [ "$previous" = "-d" ]; then
-      echo "$arg" | pretty
+      echo "$arg" | sed -E 's/("password": *")[^"]*"/\1********"/' | pretty
     fi
     previous=$arg
   done
@@ -65,8 +81,15 @@ expect() {
   fi
 }
 
-if ! curl -s -o /dev/null "$BASE_URL/health"; then
-  echo "Can't reach $BASE_URL. Start the server first: uvicorn app.main:app --no-access-log --no-server-header" >&2
+if [ "$LOCAL" = false ]; then
+  echo "Checking $BASE_URL. If the free Render service is asleep, waking it takes up to a minute..."
+fi
+if ! curl -s -o /dev/null --max-time 120 "$BASE_URL/health"; then
+  if [ "$LOCAL" = true ]; then
+    echo "Can't reach $BASE_URL. Start the server first: uvicorn app.main:app --no-access-log --no-server-header" >&2
+  else
+    echo "Can't reach $BASE_URL. Check the address and that the Render service is running." >&2
+  fi
   exit 1
 fi
 
@@ -87,13 +110,17 @@ step "3. The reporter checks the status. The code goes in a header, never in the
 call GET /api/reports/status -H "X-Case-Code: $CASE_CODE"
 expect 200
 
-step "4. Create a demo moderator with the CLI. There's no signup endpoint."
-echo "\$ python -m app.cli create-moderator $DEMO_USER --password-stdin"
-printf '%s\n' "$DEMO_PASSWORD" | "$PYTHON" -m app.cli create-moderator "$DEMO_USER" --password-stdin \
-  || echo "(that's fine, it's left over from an earlier run)"
+if [ "$LOCAL" = true ]; then
+  step "4. Create a demo moderator with the CLI. There's no signup endpoint."
+  echo "\$ python -m app.cli create-moderator $DEMO_USER --password-stdin"
+  printf '%s\n' "$DEMO_PASS" | "$PYTHON" -m app.cli create-moderator "$DEMO_USER" --password-stdin \
+    || echo "(that's fine, it's left over from an earlier run)"
+else
+  step "4. No moderator to create. On the live site it's made from MODERATOR_USERNAME and MODERATOR_PASSWORD every time the server starts."
+fi
 
 step "5. The moderator logs in"
-call POST /api/auth/login -H "Content-Type: application/json" -d "{\"username\": \"$DEMO_USER\", \"password\": \"$DEMO_PASSWORD\"}"
+call POST /api/auth/login -H "Content-Type: application/json" -d "{\"username\": \"$DEMO_USER\", \"password\": \"$DEMO_PASS\"}"
 expect 200
 TOKEN=$(echo "$BODY" | json_field '["access_token"]')
 AUTH="Authorization: Bearer $TOKEN"
