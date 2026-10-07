@@ -3,6 +3,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
 from starlette.datastructures import Headers
 
 from app import errors, evidence
@@ -62,6 +63,12 @@ app.include_router(moderator.router)
 @app.get("/health", tags=["Health"], summary="Health check")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    # There's no frontend, so the bare link opens Swagger instead of a 404.
+    return RedirectResponse("/docs")
 
 
 def openapi_schema():

@@ -102,7 +102,7 @@ def test_query_and_path_errors_use_the_same_shape(client, auth):
 
 def test_unknown_route_is_404_in_our_shape(client):
     assert_error_shape(client.get("/api/nothing-here"), 404, "NOT_FOUND")
-    assert_error_shape(client.get("/"), 404, "NOT_FOUND")
+    assert_error_shape(client.get("/nothing-here"), 404, "NOT_FOUND")
 
 
 def test_wrong_method_is_405_in_our_shape(client):

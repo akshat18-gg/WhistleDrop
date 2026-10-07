@@ -18,6 +18,14 @@ def test_swagger_ui_is_served(client):
     assert "swagger" in response.text.lower()
 
 
+def test_bare_link_redirects_to_swagger(client):
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/docs"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "swagger" in client.get("/").text.lower()
+
+
 def test_errors_are_documented_with_our_shape():
     spec = app.openapi()
     assert "HTTPValidationError" not in spec["components"]["schemas"]
