@@ -129,9 +129,18 @@ app.add_middleware(LimitBodySize)
 
 def route_template(request: Request) -> str:
     route = request.scope.get("route")
+    if route is not None:
+        return route.path
+    # FastAPI's own pages (/docs, /openapi.json, /redoc) are plain Starlette
+    # routes. They don't put the route in the scope, only the endpoint.
+    endpoint = request.scope.get("endpoint")
+    if endpoint is not None:
+        for candidate in request.app.routes:
+            if getattr(candidate, "endpoint", None) is endpoint:
+                return candidate.path
     # For unknown URLs we don't log the path at all. It could contain anything,
     # including a case code someone pasted into the address bar.
-    return route.path if route else "(no matching route)"
+    return "(no matching route)"
 
 
 @app.middleware("http")

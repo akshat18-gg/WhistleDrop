@@ -188,6 +188,22 @@ def test_request_log_has_route_template_only(client, auth, make_report, caplog):
         assert leaked not in everything
 
 
+def test_docs_pages_are_logged_by_name_and_only_unknown_paths_as_unmatched(client, caplog):
+    with caplog.at_level(logging.INFO, logger="whistledrop"):
+        for path in ["/", "/docs", "/openapi.json", "/docs/oauth2-redirect", "/redoc", "/no-such-page"]:
+            client.get(path, follow_redirects=False)
+
+    lines = [record.getMessage() for record in caplog.records if record.name == "whistledrop"]
+    assert [line.rsplit(" ", 1)[0] for line in lines] == [
+        "GET / 307",
+        "GET /docs 200",
+        "GET /openapi.json 200",
+        "GET /docs/oauth2-redirect 200",
+        "GET /redoc 200",
+        "GET (no matching route) 404",
+    ]
+
+
 def test_settings_refuse_short_or_missing_secrets(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)  # no .env file here
     monkeypatch.setenv("JWT_SECRET", "too-short")
