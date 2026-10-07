@@ -2,7 +2,7 @@
 
 A backend for confidential reporting, built for the GDG on Campus SRM recruitment task. Anyone can report a problem without an account and without saying who they are. They get a case code to follow up with, and moderators review and manage the reports. There's no frontend. You use it through Swagger at `/docs`, or with curl.
 
-Live docs: https://whistledrop.onrender.com/docs. It's on Render's free plan, so the first request after a quiet spell takes about a minute while it wakes up. The free plan also wipes the disk whenever the service sleeps, restarts or redeploys, so the database starts empty each time.
+Live docs: https://whistledrop.onrender.com/docs. It runs on Render's free plan, which has two catches. It goes to sleep after 15 minutes without traffic, so the first request after that takes about a minute. And it wipes the disk on every restart, redeploy and wake-up, so reports and files don't last. The moderator account is created again from `MODERATOR_USERNAME` and `MODERATOR_PASSWORD` every time the service starts, so logging in always works.
 
 ## Setup
 
@@ -45,7 +45,7 @@ uvicorn app.main:app --no-access-log --no-server-header
 
 Keep both flags. Uvicorn's access log records every client's IP address, and the `server` header advertises what the server is running. To lock a moderator out, run `python -m app.cli deactivate-moderator alice`. Any token they already have stops working too.
 
-To deploy your own copy, go to New > Blueprint in the Render dashboard and pick this repo. [`render.yaml`](render.yaml) generates the secrets and the encryption key, and Render asks you for `MODERATOR_PASSWORD`. The free plan has no shell, so the start command creates the `demo` moderator from that password every time the service boots.
+To deploy your own copy, go to New > Blueprint in the Render dashboard and pick this repo. [`render.yaml`](render.yaml) has Render generate all three secrets, and asks you for `MODERATOR_PASSWORD` (at least 10 characters). The free plan has no shell, so the start command creates the moderator, `demo` by default, from that password on every start.
 
 ## Tests and the demo script
 
@@ -57,7 +57,7 @@ With the server running, open a second terminal and run:
 ./scripts/demo.sh
 ```
 
-It tells the whole story with curl. A report is submitted, the reporter checks on it, a moderator logs in, filters, reviews it and leaves an internal note, tries a move that isn't allowed, resolves the report and closes the case, and the reporter looks one last time. It pretty-prints with `jq` if you have it and falls back to Python otherwise.
+It tells the whole story with curl. A report is submitted, the reporter checks on it, a moderator logs in, filters, reviews it and leaves an internal note, tries a move that isn't allowed, resolves the report and closes the case, and the reporter looks one last time. It pretty-prints with `jq` if you have it and falls back to Python otherwise. To run it against the live site, pass the address and the moderator password: `BASE_URL=https://whistledrop.onrender.com DEMO_PASS=... ./scripts/demo.sh`. It skips the CLI step there, because the server already made the moderator.
 
 The OpenAPI spec is saved in [`docs/openapi.json`](docs/openapi.json), so you can read it without running anything. If you change a route, regenerate it. A test fails if the saved spec doesn't match the code.
 
