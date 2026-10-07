@@ -6,7 +6,7 @@
 #
 # Against the live site, pass its address and the moderator password you gave Render:
 #
-#   BASE_URL=https://your-service.onrender.com DEMO_PASS=... ./scripts/demo.sh
+#   BASE_URL=https://whistledrop-ox9p.onrender.com DEMO_PASS=... ./scripts/demo.sh
 #
 # DEMO_USER defaults to "demo", the same as MODERATOR_USERNAME in render.yaml.
 set -euo pipefail
