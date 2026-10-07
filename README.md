@@ -9,8 +9,8 @@ Live docs: https://whistledrop.onrender.com/docs. It's on Render's free plan, so
 You need Python 3.11 or newer.
 
 ```bash
-git clone https://github.com/akshat18-gg/whistledrop.git
-cd whistledrop
+git clone https://github.com/akshat18-gg/WhistleDrop.git
+cd WhistleDrop
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
